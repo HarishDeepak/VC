@@ -1,0 +1,47 @@
+# RG-GeoPrompt-PEFT — reference configuration.
+# constants.py is the executable source of truth; this file mirrors it for
+# documentation/review. If you change a value here, change constants.py too.
+
+data:
+  potsdam_root_kaggle: /kaggle/input/datasets/harish77718/ovrsis-potsdam-team1/processed_potsdam
+  darmstadt_root_kaggle: /kaggle/input/darmstadt-dop20   # not yet uploaded
+  val_tile: "6_15"            # tile-level split — random split is FORBIDDEN
+  patch_size: 512
+  patch_stride: 256
+  batch_size: 4
+  num_workers: 2
+
+augment:
+  resolution_factor: 2        # 2 if 10cm GSD, 4 if 5cm — VERIFY with rasterio (NB01)
+  resolution_bridge_prob: 0.30
+
+model:
+  dinov2: facebook/dinov2-base   # backbone frozen
+  lora: {r: 16, alpha: 32, targets: [query, value], dropout: 0.1}
+  clip: {name: ViT-B-32, pretrained: openai}   # text encoder frozen
+  text_proj: 512 -> 768 -> 768 (GELU, L2-normalized)  # 2-layer MLP, fixed
+  tau_init: 0.07
+  tau_min: 0.01
+
+train_geoprompt:
+  epochs: 10
+  lr: 1.0e-4
+  eval_every: 5               # mIoU + checkpoint interval (epochs)
+
+ttpa:                          # FIXED — more steps/LR causes collapse
+  steps: 2
+  lr: 1.0e-5
+  kl_weight: 0.5
+  collapse_fallback: {steps: 1, lr: 5.0e-6, kl_weight: 1.0}
+
+metrics:                       # NEVER swap these two
+  miou: {num_classes: 5, ignore_ids: [5, 255]}   # clutter + boundary excluded
+  f1:   {num_classes: 6, ignore_ids: [255]}      # clutter INCLUDED
+
+osm:
+  erosion_kernel: 3            # 3x3 — raise to 5 if OSM misaligned
+  crs_epsg: 25832
+
+infra:
+  hf_repo: HarishDeepak/geo-prompt-peft-checkpoints
+  hf_secret: HF_TOKEN          # Kaggle Secrets — never hardcode
