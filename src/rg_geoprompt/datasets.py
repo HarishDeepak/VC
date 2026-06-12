@@ -15,7 +15,8 @@ import torchvision.transforms.functional as TF
 
 from . import paths
 from .augment import train_augment
-from .constants import BATCH_SIZE, NUM_WORKERS, PATCH_SIZE, PATCH_STRIDE, VAL_TILE
+from .constants import (BATCH_SIZE, DOP20_CRS_EPSG, NUM_WORKERS,
+                        PATCH_SIZE, PATCH_STRIDE, VAL_TILE)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -159,6 +160,11 @@ def slice_dop20_tile(tif_path: Path, out_img_dir: Path,
 
     n = 0
     with rasterio.open(tif_path) as src:
+        assert src.count >= 3, (
+            f"{tif_path.name}: expected >= 3 bands (RGBI), got {src.count}")
+        assert src.crs is not None and src.crs.to_epsg() == DOP20_CRS_EPSG, (
+            f"{tif_path.name}: expected EPSG:{DOP20_CRS_EPSG}, "
+            f"got {src.crs}. Reproject before slicing.")
         data = src.read()                      # [bands, H, W], uint8/uint16
         rgb = data[:3]                          # RGBI → RGB only
         nir = data[3].astype(np.float32) if data.shape[0] >= 4 else None
