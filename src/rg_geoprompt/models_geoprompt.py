@@ -76,6 +76,10 @@ class RGGeoPromptSegModel(nn.Module):
         out = self.backbone(pixel_values=pixel_values)
         tokens = out.last_hidden_state[:, 1:, :]               # drop CLS
         h, w = H // self.patch_size, W // self.patch_size
+        assert tokens.shape[1] >= h * w, (
+            f"Expected >= {h*w} tokens from DINOv2 for {H}x{W} input "
+            f"(patch {self.patch_size}), got {tokens.shape[1]}. "
+            f"Check that input size is a multiple of {self.patch_size}.")
         feat = tokens[:, :h * w, :].permute(0, 2, 1)
         feat = feat.reshape(B, self.hidden_dim, h, w)          # [B,768,36,36]
 
