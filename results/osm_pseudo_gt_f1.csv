@@ -1,0 +1,8 @@
+class,zero_shot_f1,ttpa_f1
+Impervious,0.4992,0.4992
+Building,0.5844,0.5842
+Low Veg,0.0471,0.0471
+Tree,0.0926,0.0926
+Car,0.0000,0.0000
+Clutter,0.0000,0.0000
+MEAN,0.2039,0.2039
