@@ -71,6 +71,14 @@ TTPA_LR = 1e-5               # NOT 1e-4
 TTPA_KL_WEIGHT = 0.5
 # Collapse fallback (RISKS.md): steps=1, lr=5e-6, kl_weight=1.0
 
+# Darmstadt-tuned TTPA — used when standard params produce zero visible change.
+# Diagnosis: if text_proj weight delta < 1e-5 OR prediction pixel change < 1%,
+# the standard params are too conservative; switch to these.
+# Risk: still possible to collapse — always check detect_collapse() after.
+TTPA_DARMSTADT_STEPS = 5
+TTPA_DARMSTADT_LR = 5e-5
+TTPA_DARMSTADT_KL_WEIGHT = 0.1   # lower → entropy term has more room to move
+
 # ── OSM pseudo-GT (Darmstadt) ──────────────────────────────────────────────
 OSM_EROSION_KERNEL = 3       # 3x3 morphological erosion → border pixels = 255
 OSM_TAGS = {"building": True, "highway": True,
