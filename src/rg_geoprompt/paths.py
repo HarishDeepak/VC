@@ -27,13 +27,19 @@ IMG_DIR: Path = ROOT / "images"
 LABEL_DIR: Path = ROOT / "labels"
 
 # ── Darmstadt DOP20 (zero-shot target) ─────────────────────────────────────
-# SOURCE: handoff spec — not yet run on Kaggle (DOP20 not downloaded yet).
-# After preprocessing, upload patches as Kaggle dataset "darmstadt-dop20".
-_KAGGLE_DARMSTADT = Path("/kaggle/input/darmstadt-dop20")
+# Kaggle mounts user datasets under /kaggle/input/datasets/<user>/<slug>.
+# The kaggle CLI --dir-mode zip flattens the images/ folder to the dataset
+# root, so patches and transforms.json sit directly under DARMSTADT_ROOT.
+_KAGGLE_DARMSTADT = Path(
+    "/kaggle/input/datasets/harish77718/darmstadt-dop20"
+)
 _LOCAL_DARMSTADT = Path("data/darmstadt_dop20")
 
 DARMSTADT_ROOT: Path = _KAGGLE_DARMSTADT if ON_KAGGLE else _LOCAL_DARMSTADT
-DARMSTADT_IMG_DIR: Path = DARMSTADT_ROOT / "images"   # 512x512 RGB patches
+# On Kaggle patches are at root (zip flattened); locally they're in images/
+DARMSTADT_IMG_DIR: Path = (
+    DARMSTADT_ROOT if ON_KAGGLE else DARMSTADT_ROOT / "images"
+)
 DARMSTADT_NDVI_DIR: Path = DARMSTADT_ROOT / "ndvi"    # optional NDVI masks
 
 # ── Working / output directory ─────────────────────────────────────────────
