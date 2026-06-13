@@ -43,7 +43,12 @@ RESOLUTION_BRIDGE_PROB = 0.30
 
 # ── Architecture (fixed by handoff — do not change) ────────────────────────
 DINOV2_NAME = "facebook/dinov2-base"
+# Register-token variant — eliminates high-norm artifact tokens in background
+# regions. Verify HF model ID before switching: facebook/dinov2-with-registers-base
+DINOV2_REG_NAME = "facebook/dinov2-with-registers-base"
+DINOV2_REG_TOKENS = 4        # extra tokens inserted after CLS in register variant
 DINOV2_PATCH = 14
+DINOV2_STRIDE = 14           # change to 7 for overlapping-patch training
 DINOV2_DIM = 768
 CLIP_NAME = "ViT-B-32"
 CLIP_PRETRAINED = "openai"

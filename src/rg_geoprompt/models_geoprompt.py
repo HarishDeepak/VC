@@ -26,8 +26,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .constants import (DEVICE, DINOV2_DIM, DINOV2_PATCH,
-                        NUM_CLASSES_TOTAL, TAU_INIT, TAU_MIN)
+from .constants import (DEVICE, DINOV2_DIM, DINOV2_PATCH, DINOV2_STRIDE,
+                        DINOV2_REG_TOKENS, NUM_CLASSES_TOTAL, TAU_INIT, TAU_MIN)
 from .models_dino_lora import build_lora_backbone, strip_compile_prefix
 
 
@@ -40,13 +40,17 @@ class RGGeoPromptSegModel(nn.Module):
 
     def __init__(self, backbone, text_embeddings: torch.Tensor,
                  num_classes: int = NUM_CLASSES_TOTAL,
-                 lowres_similarity: bool = False):
+                 lowres_similarity: bool = False,
+                 patch_stride: int = DINOV2_STRIDE,
+                 n_reg_tokens: int = 0):
         super().__init__()
         assert text_embeddings.shape == (num_classes, 512), (
             f"expected [{num_classes}, 512] CLIP prototypes, "
             f"got {tuple(text_embeddings.shape)}")
         self.backbone = backbone
         self.patch_size = DINOV2_PATCH
+        self.patch_stride = patch_stride
+        self.n_reg_tokens = n_reg_tokens
         self.hidden_dim = DINOV2_DIM
         self.num_classes = num_classes
         self.lowres_similarity = lowres_similarity
@@ -95,14 +99,16 @@ class RGGeoPromptSegModel(nn.Module):
 
         # Visual stream
         out = self.backbone(pixel_values=pixel_values)
-        tokens = out.last_hidden_state[:, 1:, :]               # drop CLS
-        h, w = H // self.patch_size, W // self.patch_size
+        # Skip CLS + register tokens (n_reg_tokens=0 for standard DINOv2)
+        tokens = out.last_hidden_state[:, 1 + self.n_reg_tokens:, :]
+        h = (H - self.patch_size) // self.patch_stride + 1
+        w = (W - self.patch_size) // self.patch_stride + 1
         assert tokens.shape[1] >= h * w, (
             f"Expected >= {h*w} tokens from DINOv2 for {H}x{W} input "
-            f"(patch {self.patch_size}), got {tokens.shape[1]}. "
-            f"Check that input size is a multiple of {self.patch_size}.")
+            f"(patch {self.patch_size}, stride {self.patch_stride}), "
+            f"got {tokens.shape[1]}.")
         feat = tokens[:, :h * w, :].permute(0, 2, 1)
-        feat = feat.reshape(B, self.hidden_dim, h, w)          # [B,768,36,36]
+        feat = feat.reshape(B, self.hidden_dim, h, w)          # [B,768,h,w]
 
         tau = self.tau.clamp(min=TAU_MIN)
         darmstadt = hasattr(self, "text_emb_multi")
@@ -158,16 +164,22 @@ class RGGeoPromptSegModel(nn.Module):
 def build_geoprompt_from_dinov2_ckpt(text_embeddings: torch.Tensor,
                                      dinov2_ckpt: Path,
                                      device: torch.device = DEVICE,
-                                     lowres_similarity: bool = False
+                                     lowres_similarity: bool = False,
+                                     use_registers: bool = False,
+                                     patch_stride: int = DINOV2_STRIDE,
                                      ) -> RGGeoPromptSegModel:
     """Build RGGeoPromptSegModel initialized from the DINOv2+LoRA checkpoint.
 
     Loads backbone (+LoRA) weights only, strict=False — the old conv
     decode_head is intentionally dropped; text_proj and τ start fresh.
     """
-    backbone = build_lora_backbone(device)
+    n_reg = DINOV2_REG_TOKENS if use_registers else 0
+    backbone = build_lora_backbone(device, use_registers=use_registers,
+                                   patch_stride=patch_stride)
     model = RGGeoPromptSegModel(backbone, text_embeddings,
-                                lowres_similarity=lowres_similarity).to(device)
+                                lowres_similarity=lowres_similarity,
+                                patch_stride=patch_stride,
+                                n_reg_tokens=n_reg).to(device)
     state = torch.load(dinov2_ckpt, map_location=device)
     state = strip_compile_prefix(state)
     backbone_only = {k: v for k, v in state.items() if "decode_head" not in k}
@@ -179,11 +191,17 @@ def build_geoprompt_from_dinov2_ckpt(text_embeddings: torch.Tensor,
 
 def load_geoprompt(ckpt_path: Path, text_embeddings: torch.Tensor,
                    device: torch.device = DEVICE,
-                   lowres_similarity: bool = False) -> RGGeoPromptSegModel:
+                   lowres_similarity: bool = False,
+                   use_registers: bool = False,
+                   patch_stride: int = DINOV2_STRIDE) -> RGGeoPromptSegModel:
     """Rebuild RGGeoPromptSegModel and load a trained GeoPrompt checkpoint."""
-    backbone = build_lora_backbone(device)
+    n_reg = DINOV2_REG_TOKENS if use_registers else 0
+    backbone = build_lora_backbone(device, use_registers=use_registers,
+                                   patch_stride=patch_stride)
     model = RGGeoPromptSegModel(backbone, text_embeddings,
-                                lowres_similarity=lowres_similarity).to(device)
+                                lowres_similarity=lowres_similarity,
+                                patch_stride=patch_stride,
+                                n_reg_tokens=n_reg).to(device)
     state = torch.load(ckpt_path, map_location=device)
     state = strip_compile_prefix(state)
     model.load_state_dict(state, strict=True)
