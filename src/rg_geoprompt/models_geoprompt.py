@@ -69,6 +69,27 @@ class RGGeoPromptSegModel(nn.Module):
         """Projected, L2-normalized text prototypes [6, 768]."""
         return F.normalize(self.text_proj(self.text_emb), dim=-1)
 
+    def set_darmstadt_mode(self, multi_emb: torch.Tensor,
+                           ortho_scale: float = 0.3) -> None:
+        """Switch to Darmstadt inference: max-pool over per-prompt embeddings.
+
+        Args:
+            multi_emb:   [6, N, 512] per-prompt CLIP embeddings (not averaged).
+                         Produced by prompts.encode_per_prompt(DARMSTADT_PROMPTS).
+            ortho_scale: Penalty weight subtracting the clutter score from the
+                         building score (0 = disabled). Gemini recommendation: 0.2–0.5.
+        """
+        assert multi_emb.ndim == 3 and multi_emb.shape[0] == 6 and multi_emb.shape[2] == 512
+        device = self.text_emb.device
+        self.register_buffer("text_emb_multi", multi_emb.float().to(device))
+        self._ortho_scale = float(ortho_scale)
+
+    def _project_text_multi(self) -> torch.Tensor:
+        """Project per-prompt embeddings [6, N, 512] → [6*N, 768] normalized."""
+        K, N, D = self.text_emb_multi.shape
+        flat = self.text_emb_multi.reshape(K * N, D)     # [6*N, 512]
+        return F.normalize(self.text_proj(flat), dim=-1)  # [6*N, 768]
+
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         B, C, H, W = pixel_values.shape
 
@@ -83,17 +104,49 @@ class RGGeoPromptSegModel(nn.Module):
         feat = tokens[:, :h * w, :].permute(0, 2, 1)
         feat = feat.reshape(B, self.hidden_dim, h, w)          # [B,768,36,36]
 
-        text_norm = self.project_text()                        # [6, 768]
         tau = self.tau.clamp(min=TAU_MIN)
+        darmstadt = hasattr(self, "text_emb_multi")
+
+        if darmstadt:
+            K = self.num_classes
+            N = self.text_emb_multi.shape[1]
+            text_flat = self._project_text_multi()             # [6*N, 768]
+
+            if self.lowres_similarity:
+                feat_norm = F.normalize(feat, dim=1)           # [B,768,h,w]
+                sim = torch.einsum("bchw,kc->bkhw",
+                                   feat_norm, text_flat) / tau # [B,6*N,h,w]
+                sim = sim.reshape(B, K, N, h, w)
+                logits = sim.max(dim=2).values                 # [B,6,h,w]
+                logits = F.interpolate(logits, size=(H, W),
+                                       mode="bilinear", align_corners=False)
+            else:
+                feat = F.interpolate(feat, size=(H, W),
+                                     mode="bilinear", align_corners=False)
+                feat_norm = F.normalize(feat, dim=1)           # [B,768,H,W]
+                feat_flat = feat_norm.permute(0, 2, 3, 1)      # [B,H,W,768]
+                sim = (feat_flat @ text_flat.T) / tau          # [B,H,W,6*N]
+                sim = sim.reshape(B, H, W, K, N)
+                logits = sim.max(dim=4).values                 # [B,H,W,6]
+                logits = logits.permute(0, 3, 1, 2)            # [B,6,H,W]
+
+            # Orthogonal projection: penalise building score by clutter score.
+            # Prevents red terracotta roofs falling to clutter class.
+            scale = getattr(self, "_ortho_scale", 0.0)
+            if scale > 0:
+                logits = logits.clone()
+                logits[:, 1] = logits[:, 1] - scale * logits[:, 5]
+            return logits
+
+        # ── Standard (training) path ──────────────────────────────────────
+        text_norm = self.project_text()                        # [6, 768]
 
         if self.lowres_similarity:
-            # OOM fallback: similarity at token resolution, upsample logits
             feat_norm = F.normalize(feat, dim=1)
             logits = torch.einsum("bchw,kc->bkhw", feat_norm, text_norm) / tau
             return F.interpolate(logits, size=(H, W),
                                  mode="bilinear", align_corners=False)
 
-        # Spec behavior: upsample features first, then cosine similarity
         feat = F.interpolate(feat, size=(H, W),
                              mode="bilinear", align_corners=False)
         feat_norm = F.normalize(feat, dim=1)                   # [B,768,H,W]

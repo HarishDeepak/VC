@@ -26,10 +26,11 @@ def set_seed(seed: int = 42) -> None:
 
 # ── Visualization ───────────────────────────────────────────────────────────
 def colorize_mask(mask: np.ndarray) -> np.ndarray:
-    """Class-ID mask [H, W] → RGB uint8 [H, W, 3]. 255 renders black."""
+    """Class-ID mask [H, W] → RGB uint8 [H, W, 3]. Boundary (255) → gray."""
     out = np.zeros((*mask.shape, 3), dtype=np.uint8)
     for cls, color in enumerate(CLASS_COLORS):
         out[mask == cls] = color
+    out[mask == 255] = (128, 128, 128)
     return out
 
 

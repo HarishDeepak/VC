@@ -52,6 +52,46 @@ PROMPT_ENSEMBLE = {
         "Satellite view of background objects and undefined surfaces."],
 }
 
+# Darmstadt-specific per-prompt ensemble for max-pool inference.
+# Building prompts cover red terracotta (dominant in Darmstadt) AND gray flat
+# roofs (Potsdam distribution) — max-pool picks whichever fires strongest.
+# Clutter prompts are explicitly ground-level to avoid absorbing red rooftops.
+DARMSTADT_PROMPTS = {
+    0: ["An aerial view of impervious surfaces including paved roads and concrete.",
+        "A top-down satellite photo of grey asphalt streets and concrete walkways.",
+        "Aerial view of concrete walkways and paved urban surfaces.",
+        "Satellite image of road network and parking lots from above.",
+        "Top-down view of sealed urban ground surfaces."],
+    1: ["Aerial satellite view of a building with a red terracotta pitched roof.",
+        "Top-down view of a house with bright red clay roof tiles.",
+        "Aerial view of a residential building featuring a red ceramic tiled rooftop.",
+        "Satellite imagery of a building with a dark gray flat concrete roof.",
+        "Aerial view of a building roof constructed with red brick or terracotta materials.",
+        "Top-down view of building structures in a German city from above.",
+        "Satellite photo of flat and pitched rooftops in urban area.",
+        "Aerial photograph of rooftops from above including red and gray surfaces."],
+    2: ["An aerial view of low vegetation including flat green grass and lawns.",
+        "A satellite photo of flat green areas and shrubs.",
+        "Top-down view of ground-level plants and low vegetation.",
+        "Aerial image of grass fields and low plant cover.",
+        "Satellite view of green lawn surfaces in urban setting."],
+    3: ["A top-down view of a tree canopy showing textured green foliage.",
+        "An aerial image of tall trees and dense forest canopies.",
+        "Satellite photo of tree crowns casting shadows.",
+        "Top-down view of dense vegetation canopy.",
+        "Aerial view of park trees and woodland from above."],
+    4: ["A satellite photo of cars parked on a road viewed from above.",
+        "An aerial view of rectangular vehicles in an urban area.",
+        "Top-down satellite view of cars and vans on streets.",
+        "Aerial image of parked vehicles in parking lots.",
+        "Satellite view of small metallic objects on roads."],
+    5: ["Aerial view of unpaved dirt, mud, or brown soil on the ground.",
+        "Top-down view of a body of water, river, or dark background surface.",
+        "Satellite image of miscellaneous ground debris and urban background clutter.",
+        "Aerial view of a paved ground surface with scattered miscellaneous objects.",
+        "Top-down satellite photo of bare earth, gravel, or construction ground."],
+}
+
 
 def encode_ensemble_prompts(prompt_dict: dict = None,
                             device: torch.device = DEVICE) -> torch.Tensor:
@@ -82,6 +122,39 @@ def encode_ensemble_prompts(prompt_dict: dict = None,
             emb = F.normalize(emb, dim=-1)         # re-normalize after avg
         embeddings.append(emb)
     return torch.stack(embeddings)                 # [6, 512]
+
+
+def encode_per_prompt(prompt_dict: dict = None,
+                      device: torch.device = DEVICE) -> torch.Tensor:
+    """Encode prompts individually — no averaging — for max-pool inference.
+
+    Returns:
+        Tensor [6, N, 512] where N = number of prompts per class.
+        Classes with fewer prompts are padded by repeating the last entry.
+    """
+    import open_clip
+
+    prompt_dict = prompt_dict or DARMSTADT_PROMPTS
+    n_max = max(len(v) for v in prompt_dict.values())
+
+    clip_model, _, _ = open_clip.create_model_and_transforms(
+        CLIP_NAME, pretrained=CLIP_PRETRAINED)
+    clip_model = clip_model.to(device).eval()
+    tokenizer = open_clip.get_tokenizer(CLIP_NAME)
+
+    per_class = []
+    for cls_id in range(6):
+        prompts = prompt_dict[cls_id]
+        tokens = tokenizer(prompts).to(device)
+        with torch.no_grad():
+            emb = clip_model.encode_text(tokens)   # [N, 512]
+            emb = F.normalize(emb, dim=-1)
+        # Pad to n_max by repeating last entry
+        if len(prompts) < n_max:
+            pad = emb[-1:].expand(n_max - len(prompts), -1)
+            emb = torch.cat([emb, pad], dim=0)
+        per_class.append(emb)
+    return torch.stack(per_class)                  # [6, N_max, 512]
 
 
 def load_or_encode_text_embeddings(path: Path = None, force: bool = False,
