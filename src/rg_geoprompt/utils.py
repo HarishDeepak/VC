@@ -35,30 +35,37 @@ def colorize_mask(mask: np.ndarray) -> np.ndarray:
 
 
 def five_column_figure(rgb: np.ndarray, zs_pred: np.ndarray,
-                       ttpa_pred: np.ndarray, entropy: np.ndarray,
+                       ttpa_pred: np.ndarray,
+                       entropy: Optional[np.ndarray] = None,
                        osm_mask: Optional[np.ndarray] = None,
                        title: str = "", save_path: Optional[Path] = None):
-    """Report figure: RGB | zero-shot pred | TTPA pred | entropy | OSM.
+    """Report figure: RGB | zero-shot pred | TTPA pred | [entropy] | [OSM].
 
     Args:
         rgb:      [H, W, 3] uint8 image
         zs_pred:  [H, W] class IDs (zero-shot, no TTPA)
         ttpa_pred:[H, W] class IDs (after TTPA)
-        entropy:  [H, W] float per-pixel entropy
-        osm_mask: [H, W] eroded OSM pseudo-GT (optional — column hidden if None)
+        entropy:  [H, W] float per-pixel entropy (optional)
+        osm_mask: [H, W] eroded OSM pseudo-GT (optional)
     """
     import matplotlib.pyplot as plt
 
-    cols = 5 if osm_mask is not None else 4
-    fig, axes = plt.subplots(1, cols, figsize=(4 * cols, 4))
-    axes[0].imshow(rgb); axes[0].set_title("DOP20 RGB")
-    axes[1].imshow(colorize_mask(zs_pred)); axes[1].set_title("Zero-shot")
-    axes[2].imshow(colorize_mask(ttpa_pred)); axes[2].set_title("TTPA")
-    im = axes[3].imshow(entropy, cmap="magma"); axes[3].set_title("Entropy")
-    fig.colorbar(im, ax=axes[3], fraction=0.046)
+    panels = [("DOP20 RGB", rgb, "rgb"),
+              ("Zero-shot", colorize_mask(zs_pred), "rgb"),
+              ("TTPA", colorize_mask(ttpa_pred), "rgb")]
+    if entropy is not None:
+        panels.append(("Entropy", entropy, "magma"))
     if osm_mask is not None:
-        axes[4].imshow(colorize_mask(osm_mask)); axes[4].set_title("OSM pseudo-GT")
-    for ax in axes:
+        panels.append(("OSM pseudo-GT", colorize_mask(osm_mask), "rgb"))
+
+    fig, axes = plt.subplots(1, len(panels), figsize=(4 * len(panels), 4))
+    for ax, (label, data, cmap) in zip(axes, panels):
+        if cmap == "rgb":
+            ax.imshow(data)
+        else:
+            im = ax.imshow(data, cmap=cmap)
+            fig.colorbar(im, ax=ax, fraction=0.046)
+        ax.set_title(label)
         ax.axis("off")
     if title:
         fig.suptitle(title)

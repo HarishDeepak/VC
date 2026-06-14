@@ -76,8 +76,8 @@ TTPA_KL_WEIGHT = 0.5
 # the standard params are too conservative; switch to these.
 # Risk: still possible to collapse — always check detect_collapse() after.
 TTPA_DARMSTADT_STEPS = 5
-TTPA_DARMSTADT_LR = 5e-5
-TTPA_DARMSTADT_KL_WEIGHT = 0.1   # lower → entropy term has more room to move
+TTPA_DARMSTADT_LR = 3e-4         # 5e-5 confirmed too low (L2-norm cancels); 3e-4 gives 7.2% pixel change
+TTPA_DARMSTADT_KL_WEIGHT = 0.05  # low → entropy term dominates; no collapse confirmed at these values
 
 # ── OSM pseudo-GT (Darmstadt) ──────────────────────────────────────────────
 OSM_EROSION_KERNEL = 3       # 3x3 morphological erosion → border pixels = 255
