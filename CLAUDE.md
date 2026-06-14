@@ -11,11 +11,27 @@ text projection (512→768→768, GELU) + cosine similarity head + learnable τ
 (init 0.07, clamp ≥0.01) + resolution-bridge augmentation + TTPA at inference.
 
 ## Confirmed results — NEVER retrain these
-| Model | Trainable | mIoU (5 cls) |
+
+### Potsdam supervised (5-class mIoU, clutter+boundary excluded)
+| Model | Trainable | mIoU | Best epoch |
+|---|---|---|---|
+| SegFormer-B0 | 3.7M (100%) | 82.1% | — |
+| DINOv2+LoRA r=16 | 788K (0.9%) | **85.26%** | 15/20 |
+| RG-GeoPrompt-PEFT | ~1.2M (~1.35%) | **84.9%** | 10/10 |
+
+### Darmstadt zero-shot (OSM pseudo-GT F1, 6-class, boundary excluded)
+| Class | ZS F1 | TTPA F1 |
 |---|---|---|
-| SegFormer-B0 | 3.7M (100%) | 82.1% |
-| DINOv2+LoRA r=16 | 788K (0.9%) | 84.6% |
-| RG-GeoPrompt-PEFT | ~1.2M (~1.35%) | TBD |
+| Impervious | 0.5156 | 0.5154 |
+| Building | 0.5810 | 0.5801 |
+| Low Veg | 0.0458 | 0.0459 |
+| Tree | 0.0931 | 0.0931 |
+| Car | 0.0000 | 0.0000 |
+| Clutter | 0.0000 | 0.0000 |
+| **MEAN** | **0.2059** | **0.2058** |
+
+TTPA params confirmed: steps=5, lr=3e-4, kl_weight=0.05, masked_entropy=True.
+TTPA had negligible effect on F1 (~7% pixel change per patch, no global improvement).
 
 Published OVRSIS numbers (TPOVSeg 38–44%, SegEarth-OV ~47%) are ZERO-SHOT
 transfer to Potsdam — a different task. Never mix them with our supervised
@@ -33,8 +49,10 @@ numbers in one table.
    CLIP frozen, cosine head. The model head is ALWAYS 6-class.
 4. **Model classes:** use `models_dino_lora.py` (6-class — the old notebook
    CELL16 had a 5-class-head bug; the recovery-cell version is canonical).
-5. **TTPA:** adapt `text_proj` ONLY. Max 2 steps, LR=1e-5, KL weight 0.5.
-   More steps/LR → prediction collapse. Fallback: 1 step, 5e-6, KL 1.0.
+5. **TTPA:** adapt `text_proj` ONLY. Darmstadt confirmed params: 5 steps,
+   LR=3e-4, KL weight=0.05, masked_entropy=True. (5e-5 too low — L2-norm
+   cancels updates. 3e-4 gives 7.2% pixel change, no collapse confirmed.)
+   Fallback: 1 step, 5e-6, KL 1.0.
 6. **text_embeddings.pt:** reuse if on disk. Only `prompts.load_or_encode_
    text_embeddings()` may create it; pass `force=True` only on prompt changes.
 7. **Resolution bridge:** 30% of train patches, factor from
@@ -56,11 +74,13 @@ numbers in one table.
   reviewed draft (TTPA run, Darmstadt inference, OSM eval, DOP20 slicing).
 
 ## Current state / next steps
-- Done: data pipeline, SegFormer, DINOv2+LoRA, CLIP prototypes (saved).
-- Next: train GeoPrompt (NB02, ~45 min; expect τ→~0.04), F1 for all 3 models,
-  download DOP20 locally → slice → upload `darmstadt-dop20` → NB03.
-- GeoPrompt full-res cosine head is memory-heavy and unverified on T4; OOM
-  fallback flag `lowres_similarity=True` exists in `models_geoprompt.py`.
+- Done: data pipeline, SegFormer (82.1%), DINOv2+LoRA (85.26%), GeoPrompt (84.9%).
+- Done: Darmstadt DOP20 inference — 1296 patches, ZS + TTPA. OSM pseudo-GT F1 computed.
+- Done: Stitched full-tile visualisations (4 tiles, RGB|ZS|TTPA|Diff|Compare PNGs).
+- TODO: HF backup of stitched PNGs + patch-level figures (rate-limited; retry with
+  `create_commit([CommitOperationAdd(...)])` to batch all files in one commit).
+- TODO: F1 scores for SegFormer and DINOv2+LoRA models (not yet computed).
+- GeoPrompt ran with `lowres_similarity=True` (cosine at 36×36 token grid); τ → ~0.052.
 
 ## Working style (user preference)
 Teach-as-you-go: cell-by-cell with confirmation checkpoints. Concise output

@@ -207,7 +207,8 @@ inference time, without any Darmstadt labels.
 
 **How it works:**
 1. Feed a Darmstadt patch to the frozen model → get an initial prediction
-2. For just 2 gradient steps, update only the Text Projection MLP (not the backbone!)
+2. For 5 gradient steps, update only the Text Projection MLP (not the backbone!)
+   - LR=3e-4, KL weight=0.05, masked entropy (skip high-entropy pixels)
 3. Loss = entropy minimization + KL divergence penalty
    - Entropy minimization: push the model to be more confident on this patch
    - KL penalty: don't deviate too far from the original prediction (prevents collapse)
@@ -334,9 +335,12 @@ rg-geoprompt-peft/
 |---|---|
 | Potsdam data pipeline | Done ✓ |
 | SegFormer baseline | Done ✓ — 82.1% mIoU |
-| DINOv2+LoRA training | **Running now ⟳** — 1/20 epochs |
-| GeoPrompt training | Pending (starts after DINOv2 finishes) |
-| HuggingFace checkpoint backup | Pending (first save) |
-| Darmstadt DOP20 download | Not started (local step needed) |
-| Darmstadt inference + TTPA | Not started |
-| OSM pseudo-GT evaluation | Not started |
+| DINOv2+LoRA training | Done ✓ — **85.26% mIoU** (best ep 15/20) |
+| GeoPrompt training | Done ✓ — **84.9% mIoU** (best ep 10/10), τ→0.052 |
+| HuggingFace checkpoint backup | Done ✓ — `HarishDeepak/geo-prompt-peft-checkpoints` |
+| Darmstadt DOP20 slicing | Done ✓ — 1296 patches, Kaggle dataset `harish77718/darmstadt-dop20` |
+| Darmstadt zero-shot inference | Done ✓ — 1296 patches, ZS + TTPA predictions saved |
+| OSM pseudo-GT evaluation | Done ✓ — MEAN F1: ZS 0.2059, TTPA 0.2058 |
+| Stitched tile visualisations | Done ✓ — 4 tiles × 5 PNGs (RGB\|ZS\|TTPA\|Diff\|Compare) |
+| HF backup of visualisations | **Pending** — hit 128 commits/hour limit; retry needed |
+| F1 for SegFormer + DINOv2+LoRA | **Pending** — only GeoPrompt zero-shot F1 computed so far |
