@@ -58,6 +58,8 @@ def five_column_figure(rgb: np.ndarray, zs_pred: np.ndarray,
     if osm_mask is not None:
         panels.append(("OSM pseudo-GT", colorize_mask(osm_mask), "rgb"))
 
+    from matplotlib.patches import Patch
+
     fig, axes = plt.subplots(1, len(panels), figsize=(4 * len(panels), 4))
     for ax, (label, data, cmap) in zip(axes, panels):
         if cmap == "rgb":
@@ -67,8 +69,17 @@ def five_column_figure(rgb: np.ndarray, zs_pred: np.ndarray,
             fig.colorbar(im, ax=ax, fraction=0.046)
         ax.set_title(label)
         ax.axis("off")
+
+    legend_entries = [
+        Patch(facecolor=tuple(c/255 for c in col), edgecolor="gray", label=name)
+        for name, col in zip(CLASS_NAMES, CLASS_COLORS)
+    ] + [Patch(facecolor=(0.5, 0.5, 0.5), edgecolor="gray", label="Boundary/Unknown")]
+    axes[-1].legend(handles=legend_entries, loc="upper left",
+                    bbox_to_anchor=(1.02, 1), borderaxespad=0,
+                    fontsize=8, framealpha=0.9, title="Classes")
+
     if title:
-        fig.suptitle(title)
+        fig.suptitle(title, fontsize=9)
     fig.tight_layout()
     if save_path:
         fig.savefig(save_path, dpi=130, bbox_inches="tight")
