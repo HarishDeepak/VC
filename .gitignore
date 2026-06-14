@@ -1,0 +1,29 @@
+# Raw data — too large for git, kept locally / on Kaggle dataset
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Model checkpoints — backed up on HuggingFace
+*.pth
+*.pt
+*.ckpt
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Env
+.env
+*.env
+
+# OS
+.DS_Store
+Thumbs.db
