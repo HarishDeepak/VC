@@ -10,17 +10,7 @@ import json, sys, uuid
 import urllib.request
 import websocket
 
-PROXY_HTTP = (
-    "https://kkb-production.jupyter-proxy.kaggle.net"
-    "/k/326834955"
-    "/eyJhbGciOiJkaXIiLCJlbmMiOiJBMTI4Q0JDLUhTMjU2IiwidHlwIjoiSldUIn0"
-    "..Tq2Ad7Ze7o-HESq2Wr_zMA"
-    ".T6JKk0qUMWJf-NATKgXo4KAmq_B2EjbhMt_KLLXQi7YlaMtQ6Fan9MyojsDaU2kCLBplljKJ"
-    "8Mi3ym5FAIVZn5oHCGDpMrfWap5elvSdDJvYqgIkcRU4I6v5Mtkk4oKrUgMMAg2MQ850iXHE-"
-    "VshyRe_B_9VBDsRo9HjHAZNIcs7M5becTXsbA66nGwdrPg13MQwuPwDtv0T6z5qNfbNiNw7nGz"
-    "ghtEkThoSJOP4xnVNhFPxq2J8umV39T-wK-K5.S_J-QNDXkxtfG1Ehiql-kw"
-    "/proxy"
-)
+PROXY_HTTP = "https://kkb-production.jupyter-proxy.kaggle.net/k/327105664/eyJhbGciOiJkaXIiLCJlbmMiOiJBMTI4Q0JDLUhTMjU2IiwidHlwIjoiSldUIn0..3hSG2yoIP4IEpCtnD2ZtrA.i-ITSjXQ5fcFGAlxt8J8M8ut8dkgEJz6dZYIBhSWi_IBiHX0_gXJoOdekDOEAAyFhknJUqfzMOobZhZTxGLnLMSdiGrGiAB47WfI6fNsa_E7sfYajqRwxSQGXBtuG8U7DT7PJTqpykWaRTdCTJ-TaF80kNyfYF61KU-9VJt8WaoC92_wHfD4R0-8FxZgfHGGtaLb1jCWcx3ytlJernvkxdzDOVX4vt5ERAa-5aXBjYlmFYja4X3OHRNViKWub6Jw.9PWdA4eOrcQ7PdHsztUJWA/proxy"
 
 
 def _get_kernel_id() -> str:
