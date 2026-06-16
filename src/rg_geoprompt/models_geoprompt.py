@@ -74,19 +74,27 @@ class RGGeoPromptSegModel(nn.Module):
         return F.normalize(self.text_proj(self.text_emb), dim=-1)
 
     def set_darmstadt_mode(self, multi_emb: torch.Tensor,
-                           ortho_scale: float = 0.3) -> None:
-        """Switch to Darmstadt inference: max-pool over per-prompt embeddings.
+                           ortho_scale: float = 0.3,
+                           building_idx: int = 1,
+                           clutter_idx: int = 5) -> None:
+        """Switch to max-pool prompt-ensemble inference (Darmstadt or N-class).
 
         Args:
-            multi_emb:   [6, N, 512] per-prompt CLIP embeddings (not averaged).
-                         Produced by prompts.encode_per_prompt(DARMSTADT_PROMPTS).
-            ortho_scale: Penalty weight subtracting the clutter score from the
-                         building score (0 = disabled). Gemini recommendation: 0.2–0.5.
+            multi_emb:    [K, N, 512] per-prompt CLIP embeddings.
+                          K can differ from the training num_classes.
+            ortho_scale:  Penalty subtracting clutter score from building score
+                          (0 = disabled). Gemini recommendation: 0.2–0.5.
+            building_idx: Index of building class for ortho penalty.
+            clutter_idx:  Index of clutter class for ortho penalty.
         """
-        assert multi_emb.ndim == 3 and multi_emb.shape[0] == 6 and multi_emb.shape[2] == 512
+        assert multi_emb.ndim == 3 and multi_emb.shape[2] == 512, (
+            f"expected [K, N, 512], got {tuple(multi_emb.shape)}")
         device = self.text_emb.device
+        self.num_classes = multi_emb.shape[0]   # allow N-class open-vocab inference
         self.register_buffer("text_emb_multi", multi_emb.float().to(device))
         self._ortho_scale = float(ortho_scale)
+        self._ortho_building_idx = int(building_idx)
+        self._ortho_clutter_idx = int(clutter_idx)
 
     def _project_text_multi(self) -> torch.Tensor:
         """Project per-prompt embeddings [6, N, 512] → [6*N, 768] normalized."""
@@ -140,8 +148,10 @@ class RGGeoPromptSegModel(nn.Module):
             # Prevents red terracotta roofs falling to clutter class.
             scale = getattr(self, "_ortho_scale", 0.0)
             if scale > 0:
+                b_idx = getattr(self, "_ortho_building_idx", 1)
+                c_idx = getattr(self, "_ortho_clutter_idx", 5)
                 logits = logits.clone()
-                logits[:, 1] = logits[:, 1] - scale * logits[:, 5]
+                logits[:, b_idx] = logits[:, b_idx] - scale * logits[:, c_idx]
             return logits
 
         # ── Standard (training) path ──────────────────────────────────────
@@ -186,6 +196,43 @@ def build_geoprompt_from_dinov2_ckpt(text_embeddings: torch.Tensor,
     missing, unexpected = model.load_state_dict(backbone_only, strict=False)
     print(f"✓ backbone loaded into GeoPrompt "
           f"(missing={len(missing)} new layers, unexpected={len(unexpected)})")
+    return model
+
+
+def load_geoprompt_nclass(ckpt_path: Path,
+                          device: torch.device = DEVICE,
+                          lowres_similarity: bool = False,
+                          use_registers: bool = False,
+                          patch_stride: int = DINOV2_STRIDE,
+                          ) -> "RGGeoPromptSegModel":
+    """Load a trained GeoPrompt checkpoint, skipping the text_emb buffer.
+
+    Use this when you want N-class open-vocabulary inference with different
+    class count than training. Call set_darmstadt_mode() immediately after
+    to inject N-class multi-prompt embeddings.
+
+    The backbone (+LoRA), text_proj MLP, and τ are all restored exactly.
+    text_emb is left as the 6-class training default and is overridden by
+    set_darmstadt_mode() before any forward pass.
+    """
+    n_reg = DINOV2_REG_TOKENS if use_registers else 0
+    backbone = build_lora_backbone(device, use_registers=use_registers,
+                                   patch_stride=patch_stride)
+    # Placeholder 6-class embeddings for construction; overridden via set_darmstadt_mode
+    dummy_te = torch.zeros(NUM_CLASSES_TOTAL, 512)
+    model = RGGeoPromptSegModel(backbone, dummy_te,
+                                lowres_similarity=lowres_similarity,
+                                patch_stride=patch_stride,
+                                n_reg_tokens=n_reg).to(device)
+    state = torch.load(ckpt_path, map_location=device)
+    state = strip_compile_prefix(state)
+    # strict=False: text_emb buffer shape will differ if N≠6; we don't care
+    missing, unexpected = model.load_state_dict(state, strict=False)
+    non_te_missing = [k for k in missing if "text_emb" not in k]
+    if non_te_missing:
+        print(f"⚠ unexpected missing keys: {non_te_missing}")
+    print(f"✓ GeoPrompt loaded for N-class inference "
+          f"(skipped text_emb buffer, call set_darmstadt_mode() next)")
     return model
 
 
